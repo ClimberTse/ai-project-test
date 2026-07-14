@@ -1,0 +1,14 @@
+inputSet:
+  name: Build_ai_project_test_1784017879708-push-trigger-input-set
+  identifier: Build_ai_project_test_1784017879708pushtriggerinputset
+  orgIdentifier: default
+  projectIdentifier: default_project
+  pipeline:
+    identifier: Build_ai_project_test_1784017879708
+    properties:
+      ci:
+        codebase:
+          build:
+            type: branch
+            spec:
+              branch: <+trigger.branch>
