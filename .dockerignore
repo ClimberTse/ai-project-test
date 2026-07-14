@@ -1,0 +1,43 @@
+# Maven / Gradle
+target/
+!.mvn/wrapper/maven-wrapper.jar
+*.class
+*.jar
+*.war
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.settings/
+.project
+.classpath
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# CI/CD
+.harness/
+.github/
+
+# Scripts (not needed in image)
+scripts/
+
+# Documentation
+docs/
+*.md
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+src/test/

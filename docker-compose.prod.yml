@@ -1,0 +1,42 @@
+# ==============================================
+# Docker Compose - Production Override
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# ==============================================
+version: "3.9"
+
+services:
+  app:
+    image: ${DOCKER_REGISTRY:-}ai-project-test:${TAG:-latest}
+    container_name: ai-project-test-prod
+    environment:
+      - DEPLOY_ENV=prod
+      - APP_PORT=8080
+      - SPRING_PROFILES_ACTIVE=prod
+      - JAVA_OPTS=-Xms512m -Xmx1024m -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+HeapDumpOnOutOfMemoryError
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    volumes:
+      - app-logs:/app/logs
+      - /etc/localtime:/etc/localtime:ro  # sync host timezone
+
+volumes:
+  app-logs:
+    driver: local

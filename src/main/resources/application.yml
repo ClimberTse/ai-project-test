@@ -1,0 +1,36 @@
+server:
+  port: ${APP_PORT:8080}
+  shutdown: graceful
+
+spring:
+  application:
+    name: ai-project-test
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+# Actuator health endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+      base-path: /
+      path-mapping:
+        health: health
+        info: info
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState
+        liveness:
+          include: livenessState
+
+# Custom application config
+app:
+  name: ai-project-test
+  version: 1.0.0-SNAPSHOT
+  env: ${DEPLOY_ENV:dev}

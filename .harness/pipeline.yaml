@@ -1,0 +1,412 @@
+# ==============================================
+# Harness Platform - CI/CD Pipeline Definition
+# Full-cycle automation: Build → Test → Review
+# → Docker Build → Deploy → Health Check → Rollback
+# ==============================================
+
+pipeline:
+  name: AI-Project-Test Full-Cycle CI/CD
+  identifier: ai_project_test_full_cycle
+  description: Full automation pipeline covering build, test, code review, docker build, deploy, and rollback
+  projectIdentifier: ai_project_test
+  orgIdentifier: default
+  tags:
+    app: ai-project-test
+    framework: spring-boot
+    deploy: docker-compose
+
+  # ===== Pipeline Variables =====
+  variables:
+    - name: JAVA_VERSION
+      type: String
+      value: "11"
+      description: Java version for build
+    - name: MAVEN_OPTS
+      type: String
+      value: "-Xmx1024m -XX:MaxMetaspaceSize=512m"
+      description: Maven JVM options
+    - name: DOCKER_REGISTRY
+      type: String
+      value: ""
+      description: Docker registry URL (empty for local)
+    - name: DEPLOY_ENV
+      type: String
+      value: "dev"
+      description: Deployment environment (dev/prod)
+      allowedValues:
+        - dev
+        - prod
+    - name: COVERAGE_THRESHOLD
+      type: String
+      value: "80"
+      description: Minimum code coverage percentage
+    - name: HEALTH_CHECK_RETRIES
+      type: Number
+      value: 30
+      description: Max health check retry attempts
+    - name: AUTO_ROLLBACK
+      type: String
+      value: "true"
+      description: Automatically rollback on deploy failure
+      allowedValues:
+        - "true"
+        - "false"
+
+  # ===== Trigger Rules =====
+  triggers:
+    - name: Main Branch Push
+      type: Webhook
+      enabled: true
+      conditions:
+        - key: sourceBranch
+          operator: equals
+          value: main
+        - key: targetBranch
+          operator: equals
+          value: main
+          # Trigger on push to main/master
+      actions:
+        - type: PipelineExecution
+
+    - name: PR Validation
+      type: Webhook
+      enabled: true
+      conditions:
+        - key: event
+          operator: equals
+          value: pull_request
+      actions:
+        - type: PipelineExecution
+      # Only run build + test + code review for PRs
+
+  # ===== Failure Strategy =====
+  failureStrategies:
+    - onFailure:
+        types:
+          - AllErrors
+      action:
+        type: StageRollback
+
+  # ===== Notification Rules =====
+  notificationRules:
+    - name: Pipeline Failure Alert
+      type: Email
+      enabled: true
+      conditions:
+        - type: PipelineFailed
+      notificationMethod:
+        type: Email
+        spec:
+          userGroups:
+            - dev_team
+          subject: "[CI/CD] Pipeline Failed - ai-project-test"
+          body: |
+            Pipeline execution failed.
+            Stage: ${failedStage}
+            Error: ${errorMessage}
+            Build: ${buildNumber}
+
+  # ================================================================
+  # Stage 1: Build - Maven Compile & Package
+  # ================================================================
+  stages:
+    - stage:
+        name: Build
+        identifier: build
+        type: CI
+        description: Maven clean compile and package
+        spec:
+          cloneCodebase: true
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Maven Build
+                  identifier: maven_build
+                  spec:
+                    connectorRef: maven_connector
+                    image: maven:3.8.8-eclipse-temurin-11
+                    command: |
+                      echo "=== Build Stage ==="
+                      ./scripts/build.sh dev
+                    reports:
+                      type: JUnit
+                      spec:
+                        paths:
+                          - "target/surefire-reports/*.xml"
+              - step:
+                  type: SaveCache
+                  name: Cache Maven Dependencies
+                  identifier: cache_maven
+                  spec:
+                    key: maven-{{ checksum "pom.xml" }}
+                    paths:
+                      - "~/.m2/repository"
+
+    # ================================================================
+    # Stage 2: Unit Test - JUnit + JaCoCo Coverage
+    # ================================================================
+    - stage:
+        name: Unit Test
+        identifier: unit_test
+        type: CI
+        description: Run unit tests with coverage reporting
+        spec:
+          cloneCodebase: true
+          execution:
+            steps:
+              - step:
+                  type: RestoreCache
+                  name: Restore Maven Cache
+                  identifier: restore_maven
+                  spec:
+                    key: maven-{{ checksum "pom.xml" }}
+              - step:
+                  type: Run
+                  name: Run Tests
+                  identifier: run_tests
+                  spec:
+                    connectorRef: maven_connector
+                    image: maven:3.8.8-eclipse-temurin-11
+                    command: |
+                      echo "=== Unit Test Stage ==="
+                      ./scripts/test.sh
+                    reports:
+                      type: JUnit
+                      spec:
+                        paths:
+                          - "target/surefire-reports/*.xml"
+              - step:
+                  type: Run
+                  name: Publish Coverage
+                  identifier: publish_coverage
+                  spec:
+                    connectorRef: maven_connector
+                    image: maven:3.8.8-eclipse-temurin-11
+                    command: |
+                      echo "Coverage report: target/site/jacoco/index.html"
+
+    # ================================================================
+    # Stage 3: Code Review - Checkstyle + SpotBugs
+    # ================================================================
+    - stage:
+        name: Code Review
+        identifier: code_review
+        type: CI
+        description: Static code analysis with Checkstyle and SpotBugs
+        spec:
+          cloneCodebase: true
+          execution:
+            steps:
+              - step:
+                  type: RestoreCache
+                  name: Restore Maven Cache
+                  identifier: restore_maven_2
+                  spec:
+                    key: maven-{{ checksum "pom.xml" }}
+              - step:
+                  type: Run
+                  name: Checkstyle Analysis
+                  identifier: checkstyle_check
+                  spec:
+                    connectorRef: maven_connector
+                    image: maven:3.8.8-eclipse-temurin-11
+                    command: |
+                      echo "=== Checkstyle ==="
+                      mvn checkstyle:check
+                    reports:
+                      type: JUnit
+                      spec:
+                        paths:
+                          - "target/checkstyle-result.xml"
+              - step:
+                  type: Run
+                  name: SpotBugs Analysis
+                  identifier: spotbugs_check
+                  spec:
+                    connectorRef: maven_connector
+                    image: maven:3.8.8-eclipse-temurin-11
+                    command: |
+                      echo "=== SpotBugs ==="
+                      mvn spotbugs:check
+              - step:
+                  type: Run
+                  name: Code Review Summary
+                  identifier: code_review_summary
+                  spec:
+                    connectorRef: maven_connector
+                    image: maven:3.8.8-eclipse-temurin-11
+                    command: |
+                      echo "=== Code Review Complete ==="
+                      if [ -f target/spotbugs.html ]; then
+                        echo "SpotBugs report: target/spotbugs.html"
+                      fi
+
+    # ================================================================
+    # Stage 4: Docker Build & Push
+    # ================================================================
+    - stage:
+        name: Docker Build
+        identifier: docker_build
+        type: CI
+        description: Build Docker image and push to registry
+        spec:
+          cloneCodebase: true
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Docker Build
+                  identifier: docker_build_step
+                  spec:
+                    connectorRef: docker_connector
+                    image: docker:24-dind
+                    command: |
+                      echo "=== Docker Build Stage ==="
+                      ./scripts/docker-build.sh "<+variables.DOCKER_REGISTRY>"
+              - step:
+                  type: Run
+                  name: Docker Image Scan
+                  identifier: docker_scan
+                  spec:
+                    connectorRef: docker_connector
+                    image: aquasec/trivy:latest
+                    command: |
+                      echo "=== Image Security Scan ==="
+                      # Scan the built image for vulnerabilities
+                      trivy image --severity HIGH,CRITICAL --no-progress \
+                        ai-project-test:latest || true
+
+    # ================================================================
+    # Stage 5: Deploy
+    # ================================================================
+    - stage:
+        name: Deploy
+        identifier: deploy
+        type: CD
+        description: Deploy application using Docker Compose
+        spec:
+          environment:
+            name: "<+variables.DEPLOY_ENV>"
+            type: Production
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Deploy Application
+                  identifier: deploy_app
+                  spec:
+                    connectorRef: deploy_connector
+                    image: docker:24
+                    command: |
+                      echo "=== Deploy Stage ==="
+                      echo "Environment: <+variables.DEPLOY_ENV>"
+                      ./scripts/deploy.sh latest "<+variables.DEPLOY_ENV>"
+              - step:
+                  type: Run
+                  name: Verify Deployment
+                  identifier: verify_deploy
+                  spec:
+                    connectorRef: deploy_connector
+                    image: curlimages/curl:latest
+                    command: |
+                      echo "=== Verifying Deployment ==="
+                      for i in $(seq 1 10); do
+                        STATUS=$(curl -s http://ai-project-test-app:8080/health | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+                        if [ "$STATUS" = "UP" ]; then
+                          echo "Service is UP!"
+                          exit 0
+                        fi
+                        echo "Waiting... ($i/10)"
+                        sleep 5
+                      done
+                      echo "Deployment verification failed!"
+                      exit 1
+
+    # ================================================================
+    # Stage 6: Health Check
+    # ================================================================
+    - stage:
+        name: Health Check
+        identifier: health_check
+        type: CD
+        description: Post-deployment health verification
+        spec:
+          environment:
+            name: "<+variables.DEPLOY_ENV>"
+            type: Production
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Smoke Test
+                  identifier: smoke_test
+                  spec:
+                    connectorRef: deploy_connector
+                    image: curlimages/curl:latest
+                    command: |
+                      echo "=== Smoke Tests ==="
+                      echo "1. Health endpoint..."
+                      curl -fsS http://ai-project-test-app:8080/health || exit 1
+                      echo ""
+                      echo "2. API greeting endpoint..."
+                      curl -fsS "http://ai-project-test-app:8080/api/greeting?name=CI" || exit 1
+                      echo ""
+                      echo "3. API info endpoint..."
+                      curl -fsS http://ai-project-test-app:8080/api/info || exit 1
+                      echo ""
+                      echo "=== All smoke tests PASSED ==="
+
+    # ================================================================
+    # Stage 7: Rollback (conditional - only on previous stage failure)
+    # ================================================================
+    - stage:
+        name: Rollback
+        identifier: rollback
+        type: CD
+        description: Rollback to previous version on failure
+        when:
+          stageStatus: Failed
+          pipelineStatus: Failed
+        spec:
+          environment:
+            name: "<+variables.DEPLOY_ENV>"
+            type: Production
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Execute Rollback
+                  identifier: execute_rollback
+                  spec:
+                    connectorRef: deploy_connector
+                    image: docker:24
+                    command: |
+                      echo "=== ROLLBACK STAGE ==="
+                      echo "Rolling back to previous stable version..."
+                      ./scripts/rollback.sh
+              - step:
+                  type: Run
+                  name: Verify Rollback
+                  identifier: verify_rollback
+                  spec:
+                    connectorRef: deploy_connector
+                    image: curlimages/curl:latest
+                    command: |
+                      echo "=== Verifying Rollback ==="
+                      sleep 10
+                      curl -fsS http://ai-project-test-app:8080/health && echo ""
+                      echo "Rollback verification complete."
+
+  # ===== Pipeline Rollback Steps (when stage rollback triggered) =====
+  rollbackSteps:
+    - step:
+        type: Run
+        name: Pipeline Rollback
+        identifier: pipeline_rollback
+        spec:
+          connectorRef: deploy_connector
+          image: docker:24
+          command: |
+            echo "=== Pipeline Rollback ==="
+            ./scripts/rollback.sh

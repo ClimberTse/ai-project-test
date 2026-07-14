@@ -1,0 +1,77 @@
+# ===== Java / Maven =====
+target/
+!.mvn/wrapper/maven-wrapper.jar
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+
+# ===== IDE =====
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Eclipse
+.settings/
+.project
+.classpath
+bin/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# NetBeans
+nbproject/
+nbbuild/
+dist/
+build/
+
+# ===== OS Generated =====
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# ===== Logs =====
+*.log
+logs/
+*.pid
+
+# ===== Environment =====
+.env
+.env.*
+!.env.example
+*.local
+
+# ===== Docker =====
+docker-compose.override.yml
+
+# ===== Temporary =====
+*.tmp
+*.bak
+*.swp
+*~
+*.orig
+tmp/
+temp/
+
+# ===== Build Artifacts =====
+*.tar.gz
+*.zip
+*.rar
+
+# ===== Security =====
+*.pem
+*.key
+*.crt
+credentials*.yml
+secrets/

@@ -1,0 +1,37 @@
+# ==============================================
+# Docker Compose - Development / Testing
+# ==============================================
+version: "3.9"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-project-test:${TAG:-latest}
+    container_name: ai-project-test-app
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    environment:
+      - DEPLOY_ENV=${DEPLOY_ENV:-dev}
+      - APP_PORT=8080
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-dev}
+      - JAVA_OPTS=-Xms256m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - app-network
+    volumes:
+      - app-logs:/app/logs
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  app-logs:

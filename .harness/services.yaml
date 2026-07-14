@@ -1,0 +1,170 @@
+# ==============================================
+# Harness Platform - Services & Environments
+# ==============================================
+
+# Service Definition
+service:
+  name: ai-project-test
+  identifier: ai_project_test_service
+  description: Spring Boot demo application with CI/CD automation
+  tags:
+    app: ai-project-test
+    framework: spring-boot
+    language: java
+    runtime: jre-11
+  serviceDefinition:
+    type: DockerCompose
+    spec:
+      artifacts:
+        primary:
+          primaryArtifactRef: docker_image
+          sources:
+            - identifier: docker_image
+              type: DockerRegistry
+              spec:
+                imagePath: ai-project-test
+                tag: <+pipeline.variables.DOCKER_TAG>
+      manifests:
+        - manifest:
+            identifier: docker_compose
+            type: DockerCompose
+            spec:
+              store:
+                type: Harness
+                spec:
+                  files:
+                    - docker-compose.yml
+                    - docker-compose.prod.yml
+      configFiles:
+        - configFile:
+            identifier: app_config
+            spec:
+              store:
+                type: Harness
+                spec:
+                  files:
+                    - src/main/resources/application.yml
+                    - src/main/resources/application-prod.yml
+
+# ===== Environment Definitions =====
+environments:
+  # Development Environment
+  - environment:
+      name: dev
+      identifier: dev_env
+      description: Development environment
+      type: PreProduction
+      tags:
+        env: dev
+      variables:
+        - name: APP_PORT
+          type: String
+          value: "8080"
+        - name: DEPLOY_ENV
+          type: String
+          value: "dev"
+        - name: SPRING_PROFILES_ACTIVE
+          type: String
+          value: "dev"
+        - name: JAVA_OPTS
+          type: String
+          value: "-Xms256m -Xmx512m"
+      infrastructureDefinitions:
+        - identifier: dev_docker_host
+          type: DockerCompose
+          spec:
+            connectorRef: dev_docker_connector
+            hostFilter: "dev-*"
+
+  # Staging Environment
+  - environment:
+      name: staging
+      identifier: staging_env
+      description: Pre-production staging environment
+      type: PreProduction
+      tags:
+        env: staging
+      variables:
+        - name: APP_PORT
+          type: String
+          value: "8080"
+        - name: DEPLOY_ENV
+          type: String
+          value: "staging"
+        - name: SPRING_PROFILES_ACTIVE
+          type: String
+          value: "prod"
+        - name: JAVA_OPTS
+          type: String
+          value: "-Xms512m -Xmx1024m"
+
+  # Production Environment
+  - environment:
+      name: prod
+      identifier: prod_env
+      description: Production environment
+      type: Production
+      tags:
+        env: prod
+      variables:
+        - name: APP_PORT
+          type: String
+          value: "8080"
+        - name: DEPLOY_ENV
+          type: String
+          value: "prod"
+        - name: SPRING_PROFILES_ACTIVE
+          type: String
+          value: "prod"
+        - name: JAVA_OPTS
+          type: String
+          value: "-Xms512m -Xmx1024m"
+      infrastructureDefinitions:
+        - identifier: prod_docker_host
+          type: DockerCompose
+          spec:
+            connectorRef: prod_docker_connector
+            hostFilter: "prod-*"
+
+# ===== Connectors (references - configure in Harness UI) =====
+connectors:
+  - name: maven_connector
+    identifier: maven_connector
+    type: DockerRegistry
+    description: Maven build container registry
+
+  - name: docker_connector
+    identifier: docker_connector
+    type: DockerRegistry
+    description: Docker image registry for push/pull
+
+  - name: deploy_connector
+    identifier: deploy_connector
+    type: DockerRegistry
+    description: Docker host for deployment
+
+  - name: dev_docker_connector
+    identifier: dev_docker_connector
+    type: DockerRegistry
+    description: Development Docker host
+
+  - name: prod_docker_connector
+    identifier: prod_docker_connector
+    type: DockerRegistry
+    description: Production Docker host
+
+# ===== Approval Gates =====
+approvalGates:
+  - name: Production Deploy Approval
+    identifier: prod_approval
+    description: Manual approval required before deploying to production
+    type: ManualApproval
+    spec:
+      userGroups:
+        - devops_team
+        - tech_lead
+      timeoutMillis: 3600000  # 1 hour
+      message: |
+        Deploying ai-project-test to PRODUCTION.
+        Version: ${artifact.tag}
+        Please review and approve.

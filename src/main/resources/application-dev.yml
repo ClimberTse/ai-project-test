@@ -1,0 +1,16 @@
+# Development environment configuration
+server:
+  port: 8080
+
+spring:
+  devtools:
+    restart:
+      enabled: true
+
+logging:
+  level:
+    root: INFO
+    com.example.demo: DEBUG
+
+app:
+  env: dev
